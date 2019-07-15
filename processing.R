@@ -71,7 +71,7 @@ myDataFormatNoDup<-mergeSNPs(dups, myDataFormat,ncolInfo=8,patNA="./.",
                              BPPARAM=MulticoreParam(4))
 # invert frequencies
 idxInv<-which(myDataFormatNoDup$AF_REF<0.5) 
-invertedGTs<-invertGT(myDataFormatNoDup,idxInv, BPPARAM = MulticoreParam(4))
+invertedGTs<-exchangeGT(myDataFormatNoDup,idxInv, BPPARAM = MulticoreParam(4))
 
 for(i in 9:ncol(myDataFormatNoDup)){
     myDataFormatNoDup[,i]<-as.character(myDataFormatNoDup[,i])
@@ -140,12 +140,9 @@ myDataFormatComplete<-myDataFormat[as.numeric(as.character(unique(GT_table_compl
 save.image("step1.RData", compress="xz")
 
 # Set working directory
-setwd("/Users/gabycleta/CONICET/Trabajo/Maestria/Tesis/RadSeqSunflower/SimulacionNueva/sim1")
+setwd("/path_to_directory/sim1")
 # load the source's files
-source("source.R")
-sourceCpp("source.cpp")
-
-load("step1.RData")
+load("../step1.RData")
 # define the SNPs with missing data
 withNA<-as.character(GT_table$SNP[GT_table$genotypes=="NA" & !(GT_table$SNP %in% GT_table_complete$SNP)])
 # compute NA percentages
@@ -178,14 +175,9 @@ wholeGT<-as.data.frame(do.call(cbind, lapply(1:ncol(wholeGT), function(x){
     return(as.numeric(column))
     
 })))
-# Traspose complete SNPs' genotypes
-traspWholeGT_complete<-as.data.frame(t(wholeGT_complete))
-for(j in 1:ncol(traspWholeGT_complete)){
-    traspWholeGT_complete[,j]<-factor(as.character(traspWholeGT_complete[,j]), levels=c("0", "1", "2"))
-}
 
 # RF prediction
-predDataAll<-predictSNP(SNPsCor, withNA, wholeGT , wholeGT_complete, traspWholeGT_complete, RF=TRUE, cor=FALSE)
+predDataAll<-predictSNP(SNPsCor=NULL, wholeGT, withNA, RF=TRUE, cor=FALSE, num.threads=4)
 # Extract predicted genotypes
 predRFAll<-as.data.frame(do.call(rbind, lapply(predDataAll, function(x){
     return(as.character(x[[1]]))
@@ -200,9 +192,9 @@ RFImputed<-imputeSNP(sampleInfo, predictedData=predRFAll, myDataFormat, myDataFo
 RFOOBImputed<-imputeSNP(sampleInfo, predictedData=predRFAll, myDataFormat, myDataFormatNoDup,OOB=TRUE, estimOOB = oobAll)
 
 # Correlated SNPs identification
-SNPsCor<-corSNPs(withNA, wholeGT, wholeGT_complete,snpRead, myDataFormat=NULL, myDataFormatComplete=NULL,LD=FALSE )
+SNPsCor<-corSNPs(withNA, wholeGT,SNPsData=NULL,LD=FALSE )
 # RFCor prediction
-predRFCorData<-predictSNP(SNPsCor, withNA, wholeGT , wholeGT_complete, traspWholeGT_complete, RF=TRUE, cor=TRUE)
+predRFCorData<-predictSNP(SNPsCor, wholeGT,withNA, RF=TRUE, cor=TRUE)
 # Extract predicted genotypes
 predRFcor<-as.data.frame(do.call(rbind, lapply(predRFCorData, function(x){
     return(as.character(x[[1]]))
@@ -212,14 +204,14 @@ oob<-do.call(c, lapply(predRFCorData, function(x){
     return(as.numeric(as.character(x[[2]])))
 }))
 # RFCor imputation
-RFCorImputed<-imputeSNP(sampleInfo, predictedData=predRFcor, myDataFormat, myDataFormatNoDup,OOB=FALSE, estimOOB = NULL)
+RFCorImputed<-imputeSNP(sampleInfo, predictedData=predRFcor, myDataFormatNoDup,ncolInfo=9, OOB=FALSE, estimOOB = NULL)
 # RFCorOOB imputation
-RFCorOOBImputed<-imputeSNP(sampleInfo, predictedData=predRFcor, myDataFormat, myDataFormatNoDup,OOB=TRUE, estimOOB = oob)
+RFCorOOBImputed<-imputeSNP(sampleInfo, predictedData=predRFcor, myDataFormatNoDup,ncolInfo=9,OOB=TRUE, estimOOB = oob)
 
 # Correlated SNPs with LD identification
-SNPsCorLD<-corSNPs(withNA, wholeGT, wholeGT_complete,snpRead, myDataFormat, myDataFormatComplete,LD=TRUE )
+SNPsCorLD<-corSNPs(withNA, wholeGT, SNPsData=myDataFormat,LD=TRUE )
 # RFCorLD prediction
-predDataLD<-predictSNP(SNPsCor=SNPsCorLD, withNA, wholeGT , wholeGT_complete, traspWholeGT_complete, RF=TRUE, cor=TRUE)
+predDataLD<-predictSNP(SNPsCor=SNPsCorLD, wholeGT,withNA, RF=TRUE, cor=TRUE)
 # Extract predicted genotypes
 predRFcorLD<-as.data.frame(do.call(rbind, lapply(predDataLD, function(x){
     return(as.character(x[[1]]))
@@ -229,16 +221,16 @@ oobLD<-do.call(c, lapply(predDataLD, function(x){
     return(as.numeric(as.character(x[[2]])))
 }))
 # RFCorLD imputation
-RFCorLDImputed<-imputeSNP(sampleInfo, predictedData=predRFcorLD, myDataFormat, myDataFormatNoDup,OOB=FALSE, estimOOB = NULL)
+RFCorLDImputed<-imputeSNP(sampleInfo, predictedData=predRFcorLD, myDataFormatNoDup,ncolInfo=9,OOB=FALSE, estimOOB = NULL)
 # RFCorLDOOB imputation
-RFCorLDOOBImputed<-imputeSNP(sampleInfo, predictedData=predRFcorLD, myDataFormat, myDataFormatNoDup,OOB=TRUE, estimOOB = oobLD)
+RFCorLDOOBImputed<-imputeSNP(sampleInfo, predictedData=predRFcorLD, myDataFormatNoDup,ncolInfo=9,OOB=TRUE, estimOOB = oobLD)
 
 
 # Mode imputation
-predDataMed<-predictSNP(SNPsCor, withNA, wholeGT , wholeGT_complete, traspWholeGT_complete, RF=F, cor=F)
+predDataMed<-predictSNP(SNPsCor, wholeGT,withNA, RF=FALSE, cor=FALSE)
 predMode<-do.call(rbind, predDataMed)
 # RFCorLDOOB imputation
-ModeImputed<-imputeSNP(sampleInfo, predictedData=predMode, myDataFormat, myDataFormatNoDup,OOB=TRUE, estimOOB = oobLD)
+ModeImputed<-imputeSNP(sampleInfo, predictedData=predMode, myDataFormatNoDup,ncolInfo=9,OOB=FALSE, estimOOB = NULL)
 
 save.image("step2.RData", compress="xz")
 
